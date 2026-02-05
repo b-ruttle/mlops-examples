@@ -1,0 +1,18 @@
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "mlops-examples/ci"
+  registered_model_name: "MLOpsExamples_Iris_LogReg"
+  model_stage: ""
+
+data:
+  path: "data/iris.csv"
+
+train:
+  model_type: "logreg"
+  seed: 42
+  test_size: 0.2
+  max_iter: 300
+  C: 1.0
+
+artifacts:
+  out_dir: "artifacts"

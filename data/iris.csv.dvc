@@ -1,0 +1,4 @@
+outs:
+- md5: 93c7bb2ddc34f2ca53d2ae6571f00b0b
+  size: 165
+  path: data/iris.csv

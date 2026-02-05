@@ -1,0 +1,5 @@
+[core]
+    remote = rustfs
+[remote "rustfs"]
+    url = s3://dvc-remote/mlops-examples
+    endpointurl = http://localhost:9000

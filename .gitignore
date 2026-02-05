@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.venv*/
+.ipynb_checkpoints/
+
+# DVC cache (do not commit)
+.dvc/cache/
+.dvc/tmp/
+
+# Data (we will track via DVC)
+data/iris.csv
+
+# Artifacts
+artifacts/
