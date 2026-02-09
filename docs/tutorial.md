@@ -66,7 +66,8 @@ git checkout -b demo/repro-1
 
 ## Step 2: Create a New Data Version (DVC)
 This generates the Breast Cancer dataset and tracks it with DVC.
-Commit before training so the run's `git_sha` can reproduce the exact data version; push after commit so the remote data upload matches a recorded Git commit.
+
+**Note:** Commit before training so the run's `git_sha` can reproduce the exact data version; push after commit so the remote data upload matches a recorded Git commit.
 
 ```bash
 make data

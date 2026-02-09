@@ -45,7 +45,7 @@ uv --version
 ## One-time setup (per developer machine)
 
 ### 1) Install dependencies
-This repo requires `uv` for reproducible environments. Python 3.12 is recommended.
+This repo requires `uv` for reproducible environments. Python 3.11+ is required.
 
 ```bash
 uv venv
@@ -118,14 +118,9 @@ Makefile equivalent:
 
 ```bash
 make data
-make push
-```
-
-Then stage and commit the DVC metadata:
-
-```bash
 git add data/breast_cancer.csv.dvc .dvc/.gitignore
 git commit -m "Track breast_cancer.csv with DVC"
+make push
 ```
 
 After this, others can run `uv run dvc pull` to fetch the dataset from RustFS.
@@ -205,7 +200,7 @@ A) First successful run
 - [ ] `dvc pull`
 - [ ] Run training (`configs/dev.yaml`)
 - [ ] Find your run in MLflow UI and inspect:
-  - params (C, max_iter, seed)
+  - params (n_estimators, max_depth, min_samples_leaf, max_features, seed)
   - metrics (val_accuracy, val_f1_macro, val_precision, val_recall, val_roc_auc, val_pr_auc)
   - artifacts (metrics.json, confusion_matrix.png, roc_curve.png, pr_curve.png, feature_importance.png)
 
@@ -216,14 +211,15 @@ B) Prove reproducibility
 - [ ] Re-run training and compare metrics (should match or be extremely close)
 
 C) Make a controlled change
-- [ ] Change `C` in `configs/dev.yaml` (e.g., 1.0 -> 0.2)
+- [ ] Change `n_estimators` or `max_depth` in `configs/dev.yaml`
 - [ ] Re-run training
 - [ ] Compare runs in MLflow (metrics shift, params differ)
 
 D) Data versioning exercise
 - [ ] Regenerate data (or add a tiny perturbation in `make_data.py` like shuffling rows)
+- [ ] `make data` (or `make data-append`)
 - [ ] `uv run dvc add data/breast_cancer.csv`, commit, `uv run dvc push`
-- [ ] Re-run training and observe:
+- [ ] `make train` and observe:
   - new `data_sha256` tag
   - potential metric differences
 - [ ] Check out the previous commit, `uv run dvc pull`, rerun and confirm you can reproduce the old run.
