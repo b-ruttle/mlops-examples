@@ -7,10 +7,33 @@ This repo is a teaching + demo project for our MLOps stack:
 - RustFS (S3-compatible): artifact storage for DVC (and MLflow server artifacts)
 - Postgres: MLflow backend store (runs/registry metadata)
 
+For a full walkthrough, see `docs/tutorial.md`. See `docs/README.md` for the full docs index.
+
 ## Prereqs
 - Python 3.11+
+- `uv` (required)
 - Git
 - DVC remote and MLflow tracking server reachable from your machine/network
+
+### Install uv
+`uv` is a fast Python package manager and virtual environment tool. We prefer it here because it installs quickly, respects the committed `uv.lock` for reproducible environments, and reduces “works on my machine” issues during training.
+
+Use the official installer:
+
+macOS/Linux:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Windows (PowerShell):
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Verify:
+```bash
+uv --version
+```
 
 ## Local endpoints (mlops-services default)
 - MLflow: http://localhost:5000
@@ -22,18 +45,23 @@ This repo is a teaching + demo project for our MLOps stack:
 ## One-time setup (per developer machine)
 
 ### 1) Install dependencies
-This repo uses `uv` for reproducible environments. Python 3.12 is recommended.
+This repo requires `uv` for reproducible environments. Python 3.12 is recommended.
 
 ```bash
 uv venv
 uv sync
 ```
 
-If you prefer, use the Makefile:
+Or use the Makefile:
 
 ```bash
 make setup
 ```
+
+Notes:
+- This is a one-time setup per machine unless you delete `.venv`.
+- You do not need to "activate" the venv when using `uv`. Use `uv run ...` and it will use `.venv` automatically.
+- If you want to activate manually, run `source .venv/bin/activate` (macOS/Linux) or `.venv\Scripts\activate` (Windows PowerShell).
 
 ### 2) DVC remote (already configured)
 
@@ -53,27 +81,54 @@ export AWS_SECRET_ACCESS_KEY="..."
 export AWS_DEFAULT_REGION="us-east-1"
 ```
 
+If you’re using `mlops-services`, you can load the defaults and secrets from there:
+
+```bash
+set -a
+source ../mlops-services/env/config.env
+source ../mlops-services/env/secrets.env
+set +a
+export AWS_ACCESS_KEY_ID="$RUSTFS_ACCESS_KEY"
+export AWS_SECRET_ACCESS_KEY="$RUSTFS_SECRET_KEY"
+```
+
+Makefile note: the default `make pull` / `make push` targets source from `../mlops-services` via `MLOPS_SERVICES_DIR`. If your repo layout differs, override it, e.g.:
+
+```bash
+make pull MLOPS_SERVICES_DIR=/path/to/mlops-services
+```
+
 ---
 
 ## Create / update the dataset (maintainers)
 
-This project uses a tiny deterministic Iris CSV to demonstrate DVC.
+This project uses a deterministic Breast Cancer CSV to demonstrate DVC.
 
 ```bash
-python scripts/make_data.py --out data/iris.csv
-dvc add data/iris.csv
-git add data/iris.csv.dvc .gitignore
-git commit -m "Track iris.csv with DVC"
-dvc push
+uv run python scripts/make_data.py --out data/breast_cancer.csv
+uv run dvc add data/breast_cancer.csv
+git add data/breast_cancer.csv.dvc .dvc/.gitignore
+git commit -m "Track breast_cancer.csv with DVC"
+uv run dvc push
 ```
+
+If you’ve already run the one-time setup, just use `uv run ...` — no activation required.
 
 Makefile equivalent:
 
 ```bash
 make data
+make push
 ```
 
-After this, others can run `dvc pull` to fetch the dataset from RustFS.
+Then stage and commit the DVC metadata:
+
+```bash
+git add data/breast_cancer.csv.dvc .dvc/.gitignore
+git commit -m "Track breast_cancer.csv with DVC"
+```
+
+After this, others can run `uv run dvc pull` to fetch the dataset from RustFS.
 
 ---
 
@@ -82,8 +137,10 @@ After this, others can run `dvc pull` to fetch the dataset from RustFS.
 ### 1) Get the dataset
 
 ```bash
-dvc pull
+uv run dvc pull
 ```
+
+If you’ve already run the one-time setup, just use `uv run ...` — no activation required.
 
 Makefile equivalent:
 
@@ -94,8 +151,10 @@ make pull
 ### 2) Train + log to MLflow + register a model
 
 ```bash
-python src/train.py --config configs/dev.yaml
+uv run python src/train.py --config configs/dev.yaml
 ```
+
+If you’ve already run the one-time setup, just use `uv run ...` — no activation required.
 
 Makefile equivalent:
 
@@ -107,8 +166,15 @@ Open MLflow UI and verify:
 
 - Experiment exists (`mlops-examples/dev`)
 - A run has params + metrics + eval artifacts
-- A model is registered (`MLOpsExamples_Iris_LogReg`)
+- A model is registered (`MLOpsExamples_BreastCancer_RF`)
 - Stage promotion (if enabled) is set (e.g. `Staging` -> latest version)
+
+What to look for in MLflow (Artifacts → `eval/`):
+- `metrics.json`: all metrics in one file
+- `confusion_matrix.png`: class‑level error breakdown
+- `roc_curve.png`: overall separability (AUC in metrics)
+- `pr_curve.png`: precision vs recall tradeoff (PR‑AUC in metrics)
+- `feature_importance.png`: top predictors from the random forest
 
 ---
 
@@ -116,8 +182,8 @@ Open MLflow UI and verify:
 
 CI runs:
 
-- `dvc pull`
-- `python src/train.py --config configs/ci.yaml`
+- `uv run dvc pull`
+- `uv run python src/train.py --config configs/ci.yaml`
 
 GitLab CI/CD variables required (masked/protected):
 
@@ -140,13 +206,13 @@ A) First successful run
 - [ ] Run training (`configs/dev.yaml`)
 - [ ] Find your run in MLflow UI and inspect:
   - params (C, max_iter, seed)
-  - metrics (val_accuracy, val_f1_macro)
-  - artifacts (metrics.json, confusion_matrix.png)
+  - metrics (val_accuracy, val_f1_macro, val_precision, val_recall, val_roc_auc, val_pr_auc)
+  - artifacts (metrics.json, confusion_matrix.png, roc_curve.png, pr_curve.png, feature_importance.png)
 
 B) Prove reproducibility
 - [ ] Note the run's `git_sha` and `data_sha256` tags in MLflow
 - [ ] Check out that exact git commit
-- [ ] `dvc pull`
+- [ ] `uv run dvc pull`
 - [ ] Re-run training and compare metrics (should match or be extremely close)
 
 C) Make a controlled change
@@ -156,11 +222,11 @@ C) Make a controlled change
 
 D) Data versioning exercise
 - [ ] Regenerate data (or add a tiny perturbation in `make_data.py` like shuffling rows)
-- [ ] `dvc add data/iris.csv`, commit, `dvc push`
+- [ ] `uv run dvc add data/breast_cancer.csv`, commit, `uv run dvc push`
 - [ ] Re-run training and observe:
   - new `data_sha256` tag
   - potential metric differences
-- [ ] Check out the previous commit, `dvc pull`, rerun and confirm you can reproduce the old run.
+- [ ] Check out the previous commit, `uv run dvc pull`, rerun and confirm you can reproduce the old run.
 
 E) Registry exercise
 - [ ] Identify the latest registered model version
