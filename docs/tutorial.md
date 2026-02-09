@@ -66,9 +66,12 @@ git checkout -b demo/repro-1
 
 ## Step 2: Create a New Data Version (DVC)
 This generates the Breast Cancer dataset and tracks it with DVC.
+Commit before training so the run's `git_sha` can reproduce the exact data version; push after commit so the remote data upload matches a recorded Git commit.
 
 ```bash
 make data
+git add data/breast_cancer.csv.dvc .dvc/.gitignore
+git commit -m "Track breast_cancer dataset"
 make push
 ```
 
@@ -122,15 +125,11 @@ This appends one synthetic row based on per‑class mean/stddev. The random seed
 
 ```bash
 make data-append
-make push
-make train
-```
-
-Then commit to lock the data version used in the run:
-```bash
 git status --short
 git add data/breast_cancer.csv.dvc .dvc/.gitignore
 git commit -m "Add breast_cancer dataset version"
+make push
+make train
 ```
 
 ---
@@ -140,10 +139,10 @@ Run the same steps to generate a new data version and compare results.
 
 ```bash
 make data-append
-make push
-make train
 git add data/breast_cancer.csv.dvc .dvc/.gitignore
 git commit -m "Update dataset version"
+make push
+make train
 ```
 
 In MLflow, compare the two runs:
@@ -171,7 +170,7 @@ make train
 
 You should get matching metrics and the same artifacts for that run.
 
-**Note:** `data_sha256` is a verification tag (not a command input). The `git_sha` points to the commit whose `.dvc` file references the exact data version. You can use `data_sha256` to cross‑check that the pulled dataset matches the run.
+**Note:** `data_sha256` is a verification tag (not a command input). The `git_sha` points to the commit whose `.dvc` file references the exact data version. If the run was created before committing the `.dvc` file in Step 2, `make pull` cannot restore the data, and reproduction will fail. You can use `data_sha256` to cross‑check that the pulled dataset matches the run.
 
 ---
 
