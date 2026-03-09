@@ -10,10 +10,14 @@ __pycache__/
 .dvc/tmp/
 
 # Data (we will track via DVC)
-data/iris.csv
+data/breast_cancer.csv
 
 # Artifacts
 artifacts/
+
+# Feast local state and feature data
+*.db
+*.parquet
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

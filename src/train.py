@@ -1,6 +1,7 @@
 import argparse
 import json
 from pathlib import Path
+import pandas as pd
 
 import yaml
 from sklearn.ensemble import RandomForestClassifier
@@ -29,6 +30,19 @@ def main(config_path: str) -> None:
     data_hash = sha256_file(data_path)
     git_sha = get_git_sha()
 
+    # ── Featurize ────────────────────────────────────────────────────────────
+    features_df = df.drop("target", axis=1)
+    target_df = df["target"]
+
+    timestamps = pd.date_range(end = pd.Timestamp.now(),
+                               periods = len(df), freq="D").to_frame(name = 'event_timestamp', index = False)
+
+    predictors_df = pd.concat(objs = [predictors_df, timestamps], axis = 1)
+    target_df = pd.concat(objs = [target_df, timestamps], axis = 1)
+
+    
+
+    # ── Split ────────────────────────────────────────────────────────────
     Xtr, Xte, ytr, yte = split_dataset(
         df,
         test_size=float(cfg["train"]["test_size"]),
