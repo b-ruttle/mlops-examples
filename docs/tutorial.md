@@ -78,7 +78,21 @@ make push
 
 ---
 
-## Step 3: Train + Register a Model
+## Step 3: Configure Feast Feature Store (One-Time)
+Training pulls features from the Feast offline store (Postgres), so ensure
+`mlops-services` is running and Postgres is reachable.
+
+Apply the Feast definitions:
+```bash
+uv run feast -c feature_repo apply
+```
+
+Training uses the FeatureService `patient_features`. Re-run `feast apply` if
+you change feature definitions.
+
+---
+
+## Step 4: Train + Register a Model
 ```bash
 make train
 ```
@@ -97,7 +111,7 @@ Artifacts in `eval/`:
 
 ---
 
-## Step 4: Try a Few Hyperparameter Variations
+## Step 5: Try a Few Hyperparameter Variations
 To see performance shifts, change a few Random Forest hyperparameters and re-run training.
 
 Edit `configs/dev.yaml` and try combinations like:
@@ -120,7 +134,7 @@ Repeat a couple of times to get a feel for how model capacity affects performanc
 
 ---
 
-## Step 5: Create + Train on a New Data Version
+## Step 6: Create + Train on a New Data Version
 This appends one synthetic row based on per‑class mean/stddev. The random seed is derived from the current dataset hash, so the new row is deterministic for the current dataset.
 `data/breast_cancer.appended` is a local guard file used to prevent multiple appends per commit; it is intentionally not tracked.
 
@@ -135,7 +149,7 @@ make train
 
 ---
 
-## Step 6: Repeat the Data-Version Process
+## Step 7: Repeat the Data-Version Process
 Run the same steps to generate a new data version and compare results.
 
 ```bash
@@ -153,7 +167,7 @@ In MLflow, compare the two runs:
 
 ---
 
-## Step 7: Reproduce a Registry Model Version
+## Step 8: Reproduce a Registry Model Version
 To reproduce a registered model:
 
 1) In MLflow Registry, open the model version and click the run.
@@ -175,7 +189,7 @@ You should get matching metrics and the same artifacts for that run.
 
 ---
 
-## Step 8: MLflow Features to Explore
+## Step 9: MLflow Features to Explore
 Use the MLflow UI to practice core workflows:
 
 1) Compare runs
@@ -197,7 +211,7 @@ Use the MLflow UI to practice core workflows:
 
 ---
 
-## Step 9: Cleanup (Optional)
+## Step 10: Cleanup (Optional)
 ```bash
 git checkout main
 git branch -D demo/repro-1

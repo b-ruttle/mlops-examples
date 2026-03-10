@@ -19,5 +19,9 @@ train:
   min_samples_leaf: 1
   max_features: "sqrt"
 
+features:
+  feast_repo: "feature_repo"
+  offline_store_uri: "postgresql+psycopg://mlflow:change_me_strong@localhost:5432/feast"
+
 artifacts:
   out_dir: "artifacts"

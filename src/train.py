@@ -3,10 +3,11 @@ import json
 from pathlib import Path
 import pandas as pd
 
+from sklearn.model_selection import train_test_split
 import yaml
 from sklearn.ensemble import RandomForestClassifier
 
-from src.data import load_dataset, split_dataset
+from src.data import load_dataset
 from src.evaluation import (
     compute_confusion_matrix,
     compute_metrics,
@@ -17,6 +18,9 @@ from src.evaluation import (
 )
 from src.tracking import log_run
 from src.utils import get_git_sha, sha256_file
+
+from sqlalchemy import create_engine
+from feast import FeatureStore
 
 
 def main(config_path: str) -> None:
@@ -31,22 +35,43 @@ def main(config_path: str) -> None:
     git_sha = get_git_sha()
 
     # ── Featurize ────────────────────────────────────────────────────────────
-    features_df = df.drop("target", axis=1)
-    target_df = df["target"]
 
-    timestamps = pd.date_range(end = pd.Timestamp.now(),
-                               periods = len(df), freq="D").to_frame(name = 'event_timestamp', index = False)
+    # Build features + target
+    features_df = df.drop(columns=["target"]).copy()
+    target_df = df[["target"]].copy()
 
-    predictors_df = pd.concat(objs = [predictors_df, timestamps], axis = 1)
-    target_df = pd.concat(objs = [target_df, timestamps], axis = 1)
+    # Add event_timestamp + patient_id
+    timestamps = pd.date_range(end=pd.Timestamp.now(), periods=len(df), freq="D").to_list()
+    features_df["event_timestamp"] = timestamps
+    target_df["event_timestamp"] = timestamps
+    features_df["patient_id"] = list(range(1, len(df) + 1))
+    target_df["patient_id"] = list(range(1, len(df) + 1))
 
-    
+    # Write to Postrgres Offline Store
+    engine = create_engine(cfg['features']['offline_store_uri'])
+    features_df.to_sql("features_df", con=engine, schema="public", if_exists="replace", index=False)
+    target_df.to_sql("target_df", con=engine, schema="public", if_exists="replace", index=False)
+
+    # Pull features from Postgres Offline Store
+    store = FeatureStore(repo_path=cfg["features"]["feast_repo"])
+    service = store.get_feature_service("patient_features")
+    entity_df = pd.read_sql("SELECT * FROM public.target_df", con=engine)
+
+    df = store.get_historical_features(
+        entity_df=entity_df,
+        features=service
+    ).to_df()
 
     # ── Split ────────────────────────────────────────────────────────────
-    Xtr, Xte, ytr, yte = split_dataset(
-        df,
+    X = df.drop(columns=["target", "event_timestamp", "patient_id"])
+    y = df["target"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
         test_size=float(cfg["train"]["test_size"]),
-        seed=int(cfg["train"]["seed"]),
+        random_state=int(cfg["train"]["seed"]),
+        stratify=y,
     )
 
     # ── Train ───────────────────────────────────────────────────────────
@@ -63,20 +88,20 @@ def main(config_path: str) -> None:
         random_state=int(cfg["train"]["seed"]),
         n_jobs=None,
     )
-    model.fit(Xtr, ytr)
-    preds = model.predict(Xte)
-    probs = model.predict_proba(Xte)[:, 1]
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)[:, 1]
 
     # ── Evaluate ────────────────────────────────────────────────────────
-    metrics = compute_metrics(yte, preds, probs)
-    cm = compute_confusion_matrix(yte, preds)
+    metrics = compute_metrics(y_test, preds, probs)
+    cm = compute_confusion_matrix(y_test, preds)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     Path(out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
     plot_confusion(cm, out_dir / "confusion_matrix.png")
-    plot_roc_curve(yte, probs, out_dir / "roc_curve.png")
-    plot_pr_curve(yte, probs, out_dir / "pr_curve.png")
-    plot_feature_importance(Xtr.columns.to_list(), model.feature_importances_, out_dir / "feature_importance.png")
+    plot_roc_curve(y_test, probs, out_dir / "roc_curve.png")
+    plot_pr_curve(y_test, probs, out_dir / "pr_curve.png")
+    plot_feature_importance(X_train.columns.to_list(), model.feature_importances_, out_dir / "feature_importance.png")
 
     # ── Log to MLflow ───────────────────────────────────────────────────
     log_run(
@@ -84,7 +109,7 @@ def main(config_path: str) -> None:
         metrics=metrics,
         artifact_dir=out_dir,
         model=model,
-        X_train=Xtr,
+        X_train=X_train,
         tags={
             "git_sha": git_sha,
             "data_sha256": data_hash,

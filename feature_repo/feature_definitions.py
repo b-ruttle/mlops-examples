@@ -6,11 +6,11 @@ from feast import (
     Entity,
     FeatureView,
     Field,
-    ValueType
+    ValueType,
+    FeatureService
 )
 
 from feast.infra.offline_stores.contrib.postgres_offline_store.postgres_source import PostgreSQLSource
-
 
 patient = Entity(name = 'patient_id', value_type = ValueType.INT64, description = 'ID of the patient')
 
@@ -60,4 +60,9 @@ target_fv = FeatureView(
         Field(name = "target", dtype = Int64)
     ],
     source = PostgreSQLSource(table="public.target_df", timestamp_field="event_timestamp")
+)
+
+patient_features = FeatureService(
+    name="patient_features",
+    features=[features_fv],
 )
