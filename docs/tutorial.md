@@ -3,8 +3,9 @@
 This tutorial walks through a repeatable workflow:
 1. Create a new branch
 2. Create a new DVC data version
-3. Train and register a model
-4. Commit the change
+3. Store features
+4. Train and register a model
+5. Commit the change
 5. Repeat to show reproducibility and change tracking
 
 It assumes you are using `mlops-services` locally (MLflow + RustFS).
@@ -78,13 +79,13 @@ make push
 
 ---
 
-## Step 3: Configure Feast Feature Store (One-Time)
+## Step 3: Configure Feast Feature Store
 Training pulls features from the Feast offline store (Postgres), so ensure
 `mlops-services` is running and Postgres is reachable.
 
 Apply the Feast definitions:
 ```bash
-uv run feast -c feature_repo apply
+make features
 ```
 
 Training uses the FeatureService `patient_features`. Re-run `feast apply` if

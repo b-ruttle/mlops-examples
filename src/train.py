@@ -7,7 +7,6 @@ from sklearn.model_selection import train_test_split
 import yaml
 from sklearn.ensemble import RandomForestClassifier
 
-from src.data import load_dataset
 from src.evaluation import (
     compute_confusion_matrix,
     compute_metrics,
@@ -17,7 +16,7 @@ from src.evaluation import (
     plot_roc_curve,
 )
 from src.tracking import log_run
-from src.utils import get_git_sha, sha256_file
+from src.utils import get_git_sha, sha256_file, sha256_df
 
 from sqlalchemy import create_engine
 from feast import FeatureStore
@@ -30,37 +29,24 @@ def main(config_path: str) -> None:
     out_dir = Path(cfg["artifacts"]["out_dir"])
 
     # ── Data ────────────────────────────────────────────────────────────
-    df = load_dataset(data_path)
+    
     data_hash = sha256_file(data_path)
     git_sha = get_git_sha()
 
-    # ── Featurize ────────────────────────────────────────────────────────────
+    # ── Pull Features from Postgres Offline Store ────────────────────────────────────────────────────────────
 
-    # Build features + target
-    features_df = df.drop(columns=["target"]).copy()
-    target_df = df[["target"]].copy()
-
-    # Add event_timestamp + patient_id
-    timestamps = pd.date_range(end=pd.Timestamp.now(), periods=len(df), freq="D").to_list()
-    features_df["event_timestamp"] = timestamps
-    target_df["event_timestamp"] = timestamps
-    features_df["patient_id"] = list(range(1, len(df) + 1))
-    target_df["patient_id"] = list(range(1, len(df) + 1))
-
-    # Write to Postrgres Offline Store
-    engine = create_engine(cfg['features']['offline_store_uri'])
-    features_df.to_sql("features_df", con=engine, schema="public", if_exists="replace", index=False)
-    target_df.to_sql("target_df", con=engine, schema="public", if_exists="replace", index=False)
-
-    # Pull features from Postgres Offline Store
     store = FeatureStore(repo_path=cfg["features"]["feast_repo"])
     service = store.get_feature_service("patient_features")
+
+    engine = create_engine(cfg["features"]["offline_store_uri"])
     entity_df = pd.read_sql("SELECT * FROM public.target_df", con=engine)
 
     df = store.get_historical_features(
         entity_df=entity_df,
         features=service
     ).to_df()
+
+    feature_hash = sha256_df(df)
 
     # ── Split ────────────────────────────────────────────────────────────
     X = df.drop(columns=["target", "event_timestamp", "patient_id"])
@@ -114,6 +100,7 @@ def main(config_path: str) -> None:
             "git_sha": git_sha,
             "data_sha256": data_hash,
             "dataset_path": str(data_path),
+            "feature_sha256": feature_hash,
         },
     )
 
