@@ -1,0 +1,28 @@
+services:
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    image: mlops-examples-runner
+    working_dir: /work
+    volumes:
+      - .:/work
+    environment:
+      PUBLIC_FQDN: ${PUBLIC_FQDN:-mlops-nginx}
+      MLFLOW_BASE_PATH: ${MLFLOW_BASE_PATH:-mlflow}
+      POSTGRES_HOST: ${POSTGRES_HOST:-mlflow-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      MLFLOW_TRACKING_USERNAME: ${MLFLOW_TRACKING_USERNAME:-}
+      MLFLOW_TRACKING_PASSWORD: ${MLFLOW_TRACKING_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+    networks:
+      - mlops
+
+networks:
+  mlops:
+    external: true
+    name: ${MLOPS_NETWORK:-mlops}

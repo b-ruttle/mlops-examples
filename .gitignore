@@ -4,13 +4,16 @@ __pycache__/
 .venv/
 .venv*/
 .ipynb_checkpoints/
+.env.user
 
 # DVC cache (do not commit)
 .dvc/cache/
 .dvc/tmp/
+.dvc/config.local
 
 # Data (we will track via DVC)
 data/breast_cancer.csv
+data/breast_cancer.appended
 
 # Artifacts
 artifacts/

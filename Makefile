@@ -1,4 +1,4 @@
-.PHONY: help setup lock data data-append pull push features train
+.PHONY: help setup lock data data-append pull push pull-host push-host pull-docker push-docker runner-build features train features-docker train-docker
 
 help:
 	@echo "Make targets:"
@@ -6,11 +6,25 @@ help:
 	@echo "  make lock          Refresh uv.lock"
 	@echo "  make data          Generate deterministic dataset and track with DVC"
 	@echo "  make data-append   Append one row to dataset and track with DVC"
-	@echo "  make pull          Pull DVC data (auto-loads creds from mlops-services if needed)"
-	@echo "  make push          Push DVC data (auto-loads creds from mlops-services if needed)"
-	@echo "  make train         Train model with configs/dev.yaml"
+	@echo "  make pull          Pull DVC data inside docker using the internal RustFS service"
+	@echo "  make push          Push DVC data inside docker using the internal RustFS service"
+	@echo "  make pull-host     Host-based DVC pull if a direct S3 endpoint is reachable"
+	@echo "  make push-host     Host-based DVC push if a direct S3 endpoint is reachable"
+	@echo "  make pull-docker   Alias for make pull"
+	@echo "  make push-docker   Alias for make push"
+	@echo "  make runner-build  Build/update the docker runner image"
+	@echo "  make features      Host-based Feast workflow (requires direct Postgres access)"
+	@echo "  make train         Host-based training workflow (requires direct Postgres access)"
+	@echo "  make features-docker  Apply Feast + load offline features inside docker"
+	@echo "  make train-docker     Train inside docker on the shared mlops network"
+	@echo "  Variables: TRAIN_CONFIG=configs/dev.yaml MLOPS_SERVICES_DIR=../mlops-services"
 
 MLOPS_SERVICES_DIR ?= ../mlops-services
+TRAIN_CONFIG ?= configs/dev.yaml
+RUNNER_COMPOSE = docker compose -f docker-compose.runner.yml
+RUNNER_DVC = /opt/venv/bin/dvc
+RUNNER_FEAST = /opt/venv/bin/feast
+RUNNER_PYTHON = /opt/venv/bin/python
 
 define DVC_WITH_ENV
 	/bin/bash -lc 'set -euo pipefail; \
@@ -23,6 +37,34 @@ define DVC_WITH_ENV
 	  export AWS_SECRET_ACCESS_KEY="$${AWS_SECRET_ACCESS_KEY:-$${RUSTFS_SECRET_KEY:-}}"; \
 	fi; \
 	uv run dvc $(1)'
+endef
+
+define RUNNER_WITH_ENV
+	/bin/bash -lc 'set -euo pipefail; \
+	CONFIG_ENV="$(MLOPS_SERVICES_DIR)/env/config.env"; \
+	SECRETS_ENV="$(MLOPS_SERVICES_DIR)/env/secrets.env"; \
+	USER_ENV=".env.user"; \
+	if [ -f "$$CONFIG_ENV" ]; then set -a; source "$$CONFIG_ENV"; set +a; fi; \
+	if [ -f "$$SECRETS_ENV" ]; then set -a; source "$$SECRETS_ENV"; set +a; fi; \
+	if [ -f "$$USER_ENV" ]; then set -a; source "$$USER_ENV"; set +a; fi; \
+	: "$${POSTGRES_USER:?Set POSTGRES_USER in your shell or mlops-services env}"; \
+	: "$${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your shell or mlops-services env}"; \
+	: "$${MLFLOW_TRACKING_USERNAME:?Set MLFLOW_TRACKING_USERNAME in your shell or .env.user}"; \
+	: "$${MLFLOW_TRACKING_PASSWORD:?Set MLFLOW_TRACKING_PASSWORD in your shell or .env.user}"; \
+	$(RUNNER_COMPOSE) $(1)'
+endef
+
+define DVC_DOCKER_WITH_ENV
+	/bin/bash -lc 'set -euo pipefail; \
+	CONFIG_ENV="$(MLOPS_SERVICES_DIR)/env/config.env"; \
+	SECRETS_ENV="$(MLOPS_SERVICES_DIR)/env/secrets.env"; \
+	USER_ENV=".env.user"; \
+	if [ -f "$$CONFIG_ENV" ]; then set -a; source "$$CONFIG_ENV"; set +a; fi; \
+	if [ -f "$$SECRETS_ENV" ]; then set -a; source "$$SECRETS_ENV"; set +a; fi; \
+	if [ -f "$$USER_ENV" ]; then set -a; source "$$USER_ENV"; set +a; fi; \
+	: "$${AWS_ACCESS_KEY_ID:?Set AWS_ACCESS_KEY_ID or provide RUSTFS_ACCESS_KEY via mlops-services env}"; \
+	: "$${AWS_SECRET_ACCESS_KEY:?Set AWS_SECRET_ACCESS_KEY or provide RUSTFS_SECRET_KEY via mlops-services env}"; \
+	$(RUNNER_COMPOSE) run --rm runner sh -lc '"'"'trap "rm -f .dvc/config.local" EXIT; $(RUNNER_DVC) remote modify --local rustfs endpointurl http://mlflow-rustfs:9000 >/dev/null; $(RUNNER_DVC) $(1)'"'"''
 endef
 
 setup:
@@ -41,14 +83,36 @@ data-append:
 	uv run dvc add data/breast_cancer.csv
 
 pull:
-	$(call DVC_WITH_ENV,pull)
+	$(call DVC_DOCKER_WITH_ENV,pull)
 
 push:
+	$(call DVC_DOCKER_WITH_ENV,push)
+
+pull-host:
+	$(call DVC_WITH_ENV,pull)
+
+push-host:
 	$(call DVC_WITH_ENV,push)
+
+pull-docker:
+	$(call DVC_DOCKER_WITH_ENV,pull)
+
+push-docker:
+	$(call DVC_DOCKER_WITH_ENV,push)
+
+runner-build:
+	$(call RUNNER_WITH_ENV,build runner)
 
 features:
 	uv run feast -c feature_repo apply
-	uv run python scripts/store_features.py --config configs/dev.yaml
+	uv run python scripts/store_features.py --config $(TRAIN_CONFIG)
 
 train:
-	uv run python src/train.py --config configs/dev.yaml
+	uv run python src/train.py --config $(TRAIN_CONFIG)
+
+features-docker:
+	$(call RUNNER_WITH_ENV,run --rm runner $(RUNNER_FEAST) -c feature_repo apply)
+	$(call RUNNER_WITH_ENV,run --rm runner $(RUNNER_PYTHON) scripts/store_features.py --config $(TRAIN_CONFIG))
+
+train-docker:
+	$(call RUNNER_WITH_ENV,run --rm runner $(RUNNER_PYTHON) src/train.py --config $(TRAIN_CONFIG))

@@ -1,0 +1,9 @@
+.git
+.venv
+.venv*
+.dvc/cache
+.dvc/tmp
+artifacts
+data
+__pycache__
+*.pyc

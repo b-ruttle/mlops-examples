@@ -2,23 +2,16 @@ stages: [train]
 
 train_golden_path:
   stage: train
-  image: python:3.11-slim
   variables:
-    PIP_DISABLE_PIP_VERSION_CHECK: "1"
-    PYTHONDONTWRITEBYTECODE: "1"
-    PYTHONUNBUFFERED: "1"
-    DVC_CACHE_DIR: ".dvc/cache"
-  cache:
-    key: dvc-cache
-    paths:
-      - .dvc/cache/
-      - .cache/pip/
-  before_script:
-    - python -m pip install --upgrade pip
-    - pip install -r requirements.txt
+    MLOPS_NETWORK: "mlops"
+    PUBLIC_FQDN: "mlops-nginx"
+    MLFLOW_BASE_PATH: "mlflow"
+    TRAIN_CONFIG: "configs/ci.yaml"
   script:
-    - dvc pull -v
-    - python src/train.py --config configs/ci.yaml
+    - make runner-build
+    - make pull
+    - make features-docker
+    - make train-docker
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
