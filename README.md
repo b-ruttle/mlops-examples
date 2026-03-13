@@ -14,7 +14,8 @@ For a full walkthrough, see `docs/tutorial.md`. See `docs/README.md` for the ful
 - Python 3.11+
 - `uv` (required)
 - Git
-- DVC remote, MLflow tracking server, and Postgres reachable from your machine/network
+- DVC remote and MLflow tracking server reachable from your machine/network
+- Docker, if you want to use the recommended runner-container workflow for Feast + training
 
 ### Install uv
 `uv` is a fast Python package manager and virtual environment tool. We prefer it here because it installs quickly, respects the committed `uv.lock` for reproducible environments, and reduces “works on my machine” issues during training.
@@ -38,7 +39,7 @@ uv --version
 
 ## Local endpoints (mlops-services default)
 - MLflow UI: http://localhost/mlflow
-- RustFS S3: http://localhost:9000
+- RustFS Console: http://localhost/rustfs
 
 ## Makefile commands
 
@@ -48,10 +49,17 @@ Run `make help` to see the command list in your terminal.
 - `make lock`: Refresh `uv.lock`
 - `make data`: Generate deterministic dataset and track it with DVC
 - `make data-append`: Append one row to the dataset and track it with DVC
-- `make pull`: Pull dataset from DVC remote (auto-loads creds from `../mlops-services` if needed)
-- `make push`: Push dataset to DVC remote (auto-loads creds from `../mlops-services` if needed)
-- `make features`: Apply Feast definitions and load features into Postgres
-- `make train`: Train and log with `configs/dev.yaml`
+- `make pull`: Recommended DVC pull behind the shared runner/container workflow
+- `make push`: Recommended DVC push behind the shared runner/container workflow
+- `make pull-host`: Host-based DVC pull if a direct S3 endpoint is reachable
+- `make push-host`: Host-based DVC push if a direct S3 endpoint is reachable
+- `make pull-docker`: Alias for `make pull`
+- `make push-docker`: Alias for `make push`
+- `make runner-build`: Build/update the runner image used for dockerized jobs
+- `make features-docker`: Apply Feast definitions and load features into Postgres from the runner container
+- `make train-docker`: Train and log with `configs/dev.yaml` from the runner container
+- `make features`: Host-based Feast workflow if Postgres is reachable directly from your machine
+- `make train`: Host-based training workflow if Postgres is reachable directly from your machine
 
 ---
 
@@ -78,13 +86,17 @@ Notes:
 
 ### 2) DVC remote (already configured)
 
-This repo includes a committed DVC remote pointing at RustFS:
+This repo includes a committed DVC remote pointing at RustFS.
 
 - bucket: `dvc-remote`
 - prefix: `mlops-examples`
-- endpoint: `http://localhost:9000`
+- committed host fallback endpoint: `http://localhost:9000`
 
-If you need to change these, update `.dvc/config`.
+If you need to change these, update `.dvc/config`. The supported dockerized DVC workflow rewrites the endpoint inside the runner container to `http://mlflow-rustfs:9000`, so the committed `localhost` value mainly matters for intentional host-based fallback use.
+
+Important:
+- The supported workflow is `make pull` / `make push`, which run DVC inside the runner container and talk to the internal RustFS service on the shared Docker network.
+- `make pull-host` / `make push-host` remain available only if you intentionally expose a direct S3-compatible endpoint outside the Docker network.
 
 Credentials are NOT committed. Set these in your shell (or use your secrets manager):
 
@@ -94,28 +106,45 @@ export AWS_SECRET_ACCESS_KEY="..."
 export AWS_DEFAULT_REGION="us-east-1"
 ```
 
-If you’re using `mlops-services`, you can load the defaults and secrets from there:
+`make pull` / `make push` only need RustFS credentials. MLflow credentials are only required for `make features-docker` and `make train-docker`.
+
+If you’re using `mlops-services`, the default DVC targets already load the RustFS credentials from:
 
 ```bash
-set -a
-source ../mlops-services/env/config.env
-source ../mlops-services/env/secrets.env
-set +a
-
-export AWS_ACCESS_KEY_ID="$RUSTFS_ACCESS_KEY"
-export AWS_SECRET_ACCESS_KEY="$RUSTFS_SECRET_KEY"
-
-export MLFLOW_TRACKING_USERNAME="$MLFLOW_AUTH_ADMIN_USERNAME"
-export MLFLOW_TRACKING_PASSWORD="$MLFLOW_AUTH_ADMIN_PASSWORD"
-
-export POSTGRES_HOST=localhost
+../mlops-services/env/config.env
+../mlops-services/env/secrets.env
 ```
 
-Makefile note: the default `make pull` / `make push` targets source from `../mlops-services` via `MLOPS_SERVICES_DIR`. If your repo layout differs, override it, e.g.:
+Makefile note: the DVC targets source from `../mlops-services` via `MLOPS_SERVICES_DIR`. If your repo layout differs, override it, e.g.:
 
 ```bash
 make pull MLOPS_SERVICES_DIR=/path/to/mlops-services
 ```
+
+### 3) Personal MLflow credentials
+
+Use your own MLflow user account when training. Do not use the bootstrap admin account from `mlops-services`.
+
+Create a local `.env.user` from the example file:
+
+```bash
+cp .env.user.example .env.user
+# then edit .env.user with your own MLflow username/password
+```
+
+You can also export the variables in your shell instead:
+
+```bash
+export MLFLOW_TRACKING_USERNAME="your-mlflow-username"
+export MLFLOW_TRACKING_PASSWORD="your-mlflow-password"
+```
+
+The docker-based Make targets automatically load:
+- `../mlops-services/env/config.env`
+- `../mlops-services/env/secrets.env`
+- `.env.user` if present
+
+Host-based `make features` / `make train` do not source those files automatically. If you use the host fallback, export the needed values yourself, or set `MLFLOW_TRACKING_URI` and the Postgres connection variables explicitly in your shell first.
 
 ---
 
@@ -128,7 +157,7 @@ uv run python scripts/make_data.py --out data/breast_cancer.csv
 uv run dvc add data/breast_cancer.csv
 git add data/breast_cancer.csv.dvc .dvc/.gitignore
 git commit -m "Track breast_cancer.csv with DVC"
-uv run dvc push
+make push
 ```
 
 If you’ve already run the one-time setup, just use `uv run ...` — no activation required.
@@ -142,7 +171,7 @@ git commit -m "Track breast_cancer.csv with DVC"
 make push
 ```
 
-After this, others can run `uv run dvc pull` to fetch the dataset from RustFS.
+After this, others can run `make pull` to fetch the dataset from RustFS with the supported containerized workflow.
 
 ---
 
@@ -151,45 +180,41 @@ After this, others can run `uv run dvc pull` to fetch the dataset from RustFS.
 ### 1) Get the dataset
 
 ```bash
-uv run dvc pull
-```
-
-If you’ve already run the one-time setup, just use `uv run ...` — no activation required.
-
-Makefile equivalent:
-
-```bash
 make pull
 ```
 
 ### 2) Build Feast offline store
 
-Training reads features from Feast's offline store (Postgres), so populate it first:
+Training reads features from Feast's offline store in Postgres. With the current `mlops-services` architecture, the recommended workflow is to run Feast from the docker runner on the shared `mlops` network:
 
 ```bash
-uv run feast -c feature_repo apply
-uv run python scripts/store_features.py --config configs/dev.yaml
+make runner-build
+make features-docker
 ```
 
-Makefile equivalent:
+If you prefer to run Feast directly on the host and your Postgres instance is reachable from your machine, you can still use:
 
 ```bash
 make features
 ```
 
+Host fallback note:
+- `make features` expects the Postgres variables referenced by `configs/*.yaml` to already be exported in your shell, such as `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, and `POSTGRES_PASSWORD`.
+
 ### 3) Train + log to MLflow + register a model
 
 ```bash
-uv run python src/train.py --config configs/dev.yaml
+make train-docker
 ```
 
-If you’ve already run the one-time setup, just use `uv run ...` — no activation required.
-
-Makefile equivalent:
+If Postgres is reachable directly from your machine, the host-based fallback remains available:
 
 ```bash
 make train
 ```
+
+Host fallback note:
+- `make train` also expects the MLflow connection values to already be exported in your shell, either through `MLFLOW_TRACKING_URI` or through `PUBLIC_FQDN` + `MLFLOW_BASE_PATH`, plus your `MLFLOW_TRACKING_USERNAME` / `MLFLOW_TRACKING_PASSWORD`.
 
 Open MLflow UI and verify:
 
@@ -197,6 +222,7 @@ Open MLflow UI and verify:
 - A run has params + metrics + eval artifacts
 - A model is registered (`MLOpsExamples_BreastCancer_RF`)
 - Stage promotion (if enabled) is set (e.g. `Staging` -> latest version)
+- Run tags include `git_sha`, `data_sha256`, and `feature_sha256`
 
 What to look for in MLflow (Artifacts → `eval/`):
 - `metrics.json`: all metrics in one file
@@ -211,10 +237,14 @@ What to look for in MLflow (Artifacts → `eval/`):
 
 CI runs:
 
-- `uv run dvc pull`
-- `uv run feast -c feature_repo apply`
-- `uv run python scripts/store_features.py --config configs/ci.yaml`
-- `uv run python src/train.py --config configs/ci.yaml`
+- `make runner-build`
+- `make pull`
+- `make features-docker TRAIN_CONFIG=configs/ci.yaml`
+- `make train-docker TRAIN_CONFIG=configs/ci.yaml`
+
+Runner requirement:
+- The GitLab runner must have Docker access to the same host and `mlops` Docker network as `mlops-services`.
+- In practice, that means a shell runner on the shared host or a runner with the host Docker socket mounted.
 
 GitLab CI/CD variables required (masked/protected):
 
@@ -222,10 +252,11 @@ GitLab CI/CD variables required (masked/protected):
 - `AWS_SECRET_ACCESS_KEY`
 - `POSTGRES_USER`
 - `POSTGRES_PASSWORD`
-- `POSTGRES_HOST`
-- `POSTGRES_PORT`
-- optionally `AWS_DEFAULT_REGION`
-- optional `MLFLOW_TRACKING_URI` (overrides config)
+- `MLFLOW_TRACKING_USERNAME`
+- `MLFLOW_TRACKING_PASSWORD`
+- optional `MLOPS_NETWORK` (defaults to `mlops`)
+- optional `PUBLIC_FQDN` (defaults to `mlops-nginx` for CI runner networking)
+- optional `MLFLOW_BASE_PATH` (defaults to `mlflow`)
 - optional `MLFLOW_EXPERIMENT_NAME` (overrides config)
 - optional `MLFLOW_REGISTERED_MODEL_NAME` (overrides config)
 - optional `MLFLOW_MODEL_STAGE` (e.g., `Staging`)
@@ -236,9 +267,10 @@ GitLab CI/CD variables required (masked/protected):
 
 A) First successful run
 - [ ] Clone repo, install deps
-- [ ] Set AWS creds
-- [ ] `dvc pull`
-- [ ] Run training (`configs/dev.yaml`)
+- [ ] Set MLflow creds
+- [ ] `make pull`
+- [ ] `make features-docker`
+- [ ] `make train-docker`
 - [ ] Find your run in MLflow UI and inspect:
   - params (n_estimators, max_depth, min_samples_leaf, max_features, seed)
   - metrics (val_accuracy, val_f1_macro, val_precision, val_recall, val_roc_auc, val_pr_auc)
@@ -247,22 +279,22 @@ A) First successful run
 B) Prove reproducibility
 - [ ] Note the run's `git_sha` and `data_sha256` tags in MLflow
 - [ ] Check out that exact git commit
-- [ ] `uv run dvc pull`
-- [ ] Re-run training and compare metrics (should match or be extremely close)
+- [ ] `make pull`
+- [ ] Re-run `make features-docker` and `make train-docker`, then compare metrics
 
 C) Make a controlled change
 - [ ] Change `n_estimators` or `max_depth` in `configs/dev.yaml`
-- [ ] Re-run training
+- [ ] Re-run `make train-docker`
 - [ ] Compare runs in MLflow (metrics shift, params differ)
 
 D) Data versioning exercise
 - [ ] Regenerate data (or add a tiny perturbation in `make_data.py` like shuffling rows)
 - [ ] `make data` (or `make data-append`)
-- [ ] `uv run dvc add data/breast_cancer.csv`, commit, `uv run dvc push`
-- [ ] `make train` and observe:
+- [ ] `uv run dvc add data/breast_cancer.csv`, commit, `make push`
+- [ ] `make features-docker` then `make train-docker` and observe:
   - new `data_sha256` tag
   - potential metric differences
-- [ ] Check out the previous commit, `uv run dvc pull`, rerun and confirm you can reproduce the old run.
+- [ ] Check out the previous commit, `make pull`, rerun `make features-docker` and `make train-docker`, and confirm you can reproduce the old run.
 
 E) Registry exercise
 - [ ] Identify the latest registered model version
@@ -277,6 +309,7 @@ E) Registry exercise
 - MLflow tags:
   - `git_sha`: source code version
   - `data_sha256`: dataset content hash
+  - `feature_sha256`: hash of the Feast training dataframe used by the run
 - Buckets:
   - `dvc-remote` for DVC (created by `mlops-services` RustFS init)
   - `mlflow-artifacts` for MLflow server
@@ -287,4 +320,4 @@ If you run into issues, check:
 
 - network access to MLflow/RustFS
 - AWS creds for DVC
-- that the DVC remote endpointurl is correct
+- that the DVC remote endpointurl is correct for your chosen workflow

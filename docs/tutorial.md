@@ -6,7 +6,7 @@ This tutorial walks through a repeatable workflow:
 3. Store features
 4. Train and register a model
 5. Commit the change
-5. Repeat to show reproducibility and change tracking
+6. Repeat to show reproducibility and change tracking
 
 It assumes you are using `mlops-services` locally (MLflow + RustFS + Postgres).
 
@@ -45,23 +45,15 @@ make up
 
 Verify:
 - MLflow UI: 'http://localhost/mlflow'
-- RustFS S3: 'http://localhost:9000'
+- RustFS Console: 'http://localhost/rustfs'
 
-Set credentials from `mlops-services`:
+Use the dockerized DVC workflow in this repo. DVC object operations use the internal RustFS service from the runner container.
+
+Set up your personal MLflow credentials. Do not use the bootstrap admin account:
 
 ```bash
-set -a
-source ../mlops-services/env/config.env
-source ../mlops-services/env/secrets.env
-set +a
-
-export AWS_ACCESS_KEY_ID="$RUSTFS_ACCESS_KEY"
-export AWS_SECRET_ACCESS_KEY="$RUSTFS_SECRET_KEY"
-
-export MLFLOW_TRACKING_USERNAME="$MLFLOW_AUTH_ADMIN_USERNAME"
-export MLFLOW_TRACKING_PASSWORD="$MLFLOW_AUTH_ADMIN_PASSWORD"
-
-export POSTGRES_HOST=localhost
+cp .env.user.example .env.user
+# edit .env.user and set your own MLFLOW_TRACKING_USERNAME / MLFLOW_TRACKING_PASSWORD
 ```
 
 ---
@@ -88,12 +80,12 @@ make push
 ---
 
 ## Step 3: Configure Feast Feature Store
-Training pulls features from the Feast offline store (Postgres), so ensure
-`mlops-services` is running and Postgres is reachable.
+Training pulls features from the Feast offline store (Postgres). The recommended workflow is to run Feast from the docker runner on the shared `mlops` network.
 
 Apply the Feast definitions:
 ```bash
-make features
+make runner-build
+make features-docker
 ```
 
 Training uses the FeatureService `patient_features`. Re-run `feast apply` if
@@ -103,13 +95,14 @@ you change feature definitions.
 
 ## Step 4: Train + Register a Model
 ```bash
-make train
+make train-docker
 ```
 
 Verify in MLflow UI:
 - Experiment: `mlops-examples/dev`
 - A new run exists with metrics and artifacts
 - A model is registered: `MLOpsExamples_BreastCancer_RF`
+- Run tags include `git_sha`, `data_sha256`, and `feature_sha256`
 
 Artifacts in `eval/`:
 - `metrics.json`
@@ -131,7 +124,7 @@ Edit `configs/dev.yaml` and try combinations like:
 
 Run training each time:
 ```bash
-make train
+make train-docker
 ```
 
 In MLflow, compare the runs:
@@ -153,7 +146,8 @@ git status --short
 git add data/breast_cancer.csv.dvc .dvc/.gitignore
 git commit -m "Add breast_cancer dataset version"
 make push
-make train
+make features-docker
+make train-docker
 ```
 
 ---
@@ -166,7 +160,8 @@ make data-append
 git add data/breast_cancer.csv.dvc .dvc/.gitignore
 git commit -m "Update dataset version"
 make push
-make train
+make features-docker
+make train-docker
 ```
 
 In MLflow, compare the two runs:
@@ -184,17 +179,19 @@ To reproduce a registered model:
 2) Note the run tags:
    - `git_sha`
    - `data_sha256`
+   - `feature_sha256`
    
 3) Reproduce locally:
 ```bash
 git checkout <git_sha>
 make pull
-make train
+make features-docker
+make train-docker
 ```
 
 You should get matching metrics and the same artifacts for that run.
 
-**Note:** `data_sha256` is a verification tag (not a command input). The `git_sha` points to the commit whose `.dvc` file references the exact data version. If the run was created before committing the `.dvc` file in Step 2, `make pull` cannot restore the data, and reproduction will fail. You can use `data_sha256` to cross‑check that the pulled dataset matches the run.
+**Note:** `data_sha256` and `feature_sha256` are verification tags, not command inputs. The `git_sha` points to the commit whose `.dvc` file references the exact data version. If the run was created before committing the `.dvc` file in Step 2, `make pull` cannot restore the data, and reproduction will fail. Use `data_sha256` to cross-check the pulled dataset and `feature_sha256` to confirm the rebuilt Feast dataframe matches the original run.
 
 ---
 

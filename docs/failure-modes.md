@@ -19,14 +19,14 @@ make pull
 ## 2) MLflow tracking URI unreachable
 Break it:
 ```bash
-export MLFLOW_TRACKING_URI="http://localhost:5999"
-make train
+export PUBLIC_FQDN="localhost:5999"
+make train-docker
 ```
 
 Fix it:
 ```bash
-unset MLFLOW_TRACKING_URI
-make train
+unset PUBLIC_FQDN
+make train-docker
 ```
 
 ## 3) DVC remote endpoint misconfigured
@@ -34,30 +34,34 @@ Break it (temporarily):
 ```bash
 sed -n '1,120p' .dvc/config
 ```
-Edit the `endpointurl` to a bad value, then try:
+Edit the `endpointurl` to a bad value, then try the host fallback:
 ```bash
-make pull
+make pull-host
 ```
+
+Why `pull-host`:
+- `make pull` rewrites the DVC endpoint inside the runner container to `http://mlflow-rustfs:9000`, so the committed `.dvc/config` endpoint is only exercised by the host fallback path.
 
 Fix it:
 Revert the config change and re-run:
 ```bash
-make pull
+make pull-host
 ```
 
 ## 4) Feast offline store unreachable
 Break it:
 ```bash
 export POSTGRES_HOST="bad-host"
-make features
+make features-docker
 ```
 
 Fix it:
 ```bash
 unset POSTGRES_HOST
-make features
+make features-docker
 ```
 
 ### What to observe
 - Errors should point to credentials or network connectivity.
+- DVC, Feast, and training normally run from the docker runner on the shared `mlops` network.
 - Ensure fixes are done via env vars or config, not by editing code.
