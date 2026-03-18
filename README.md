@@ -39,6 +39,7 @@ uv --version
 
 ## Local endpoints (mlops-services default)
 - MLflow UI: http://localhost/mlflow
+- Airflow UI: http://localhost/airflow
 - RustFS Console: http://localhost/rustfs
 
 ## Makefile commands
@@ -318,6 +319,142 @@ GitLab CI/CD variables required (masked/protected):
 - optional `MLFLOW_EXPERIMENT_NAME` (overrides config)
 - optional `MLFLOW_REGISTERED_MODEL_NAME` (overrides config)
 - optional `MLFLOW_MODEL_STAGE` (e.g., `Staging`)
+
+---
+
+## Airflow Tutorial
+
+This repo now includes Airflow DAGs under `dags/`:
+
+- `dags/demo.py`: a tiny smoke-test DAG with two tasks, `hello -> airflow`
+- `dags/mlops_pipeline.py`: the full example pipeline orchestrated in Airflow
+
+Airflow itself runs from `../mlops-services`, but the DAG code lives in this repo so it can evolve alongside the pipeline scripts and configs.
+
+### What Airflow is doing here
+
+Airflow is the orchestrator. It does not replace DVC, Feast, or MLflow.
+Its job is to:
+
+- define the order of the steps
+- run the steps
+- record which step succeeded or failed
+- show logs for each task in the UI
+
+In this repo, the Airflow pipeline mirrors the Makefile flow. The `mlops_pipeline` DAG runs these stages:
+
+```text
+setup_environment
+-> extract_data
+-> push_data
+-> pull_data
+-> transform_data
+-> load_features
+-> split_data
+-> train_model
+-> evaluate_model
+-> log_to_mlflow
+```
+
+That is intentionally close to `make pipeline`, but broken into separate Airflow tasks so you can see exactly where a run fails.
+
+### Prereqs
+
+Before using the Airflow DAGs:
+
+1. Start `mlops-services`
+```bash
+cd ../mlops-services
+make up
+```
+
+2. Make sure Airflow is mounted to this repo's `dags/` folder
+
+3. Make sure your MLflow credentials are available in `.env.user`
+```bash
+cp .env.user.example .env.user
+# then edit .env.user
+```
+
+### Demo DAG
+
+The easiest first test is the `demo` DAG.
+
+What it proves:
+
+- Airflow can discover DAG files
+- the scheduler can create a DAG run
+- the executor can run tasks
+- logs are being written
+
+Run it from the Airflow UI:
+
+1. Open `http://localhost/airflow`
+2. Find the `demo` DAG
+3. Click the play button to trigger it
+
+Expected behavior:
+
+- task `hello` prints `hello`
+- task `airflow` prints `airflow`
+
+### MLOps Pipeline DAG
+
+Once the demo DAG works, use `mlops_pipeline`.
+
+Run it from the UI:
+
+1. Open `http://localhost/airflow`
+2. Open the `mlops_pipeline` DAG
+3. Trigger a run
+4. Watch the `Grid` view as each task turns from queued -> running -> success/failed
+
+This DAG runs the same scripts you already know from the Makefile, but in separate Airflow tasks.
+
+### How to read Airflow failures
+
+When a task fails:
+
+1. Open the DAG in `Grid` view
+2. Click the failed task box
+3. Open `Log`
+
+When reading the log, use this order:
+
+1. Find the first traceback from your script or command
+2. Find the first concrete exception message
+3. Treat the large Airflow traceback below it as wrapper context
+
+Examples of root-cause lines:
+
+- `ModuleNotFoundError: No module named 'src'`
+- `FileNotFoundError: Raw dataset not found at: data/raw/breast_cancer.csv`
+- `MlflowException: ... 404 Not Found`
+
+Those lines usually matter more than the long Airflow stack trace underneath.
+
+### Why use Airflow if `make pipeline` already exists?
+
+`make pipeline` is still useful for local command-line runs.
+
+Airflow adds:
+
+- per-step visibility
+- DAG run history
+- task-level logs
+- retries and scheduling later
+- a UI for debugging failures
+
+The Makefile is still the simplest mental model for the pipeline.
+Airflow is the operational layer that turns that linear workflow into a managed DAG.
+
+### Good beginner workflow
+
+1. Confirm `demo` works
+2. Trigger `mlops_pipeline`
+3. Watch the `Grid` view
+4. If a task fails, open its log and identify the first real exception
+5. Fix the issue, then trigger a new run
 
 ---
 
