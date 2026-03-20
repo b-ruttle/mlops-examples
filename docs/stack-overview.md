@@ -6,13 +6,13 @@ This repo demonstrates a simple, reproducible MLOps stack:
 - **MLflow**: tracks experiments, logs metrics/artifacts, and registers models.
 - **RustFS (S3-compatible)**: object store for DVC and MLflow artifacts.
 - **Feast**: Feature store for training data.
-- **Postgres**: MLflow backend store for runs and registry metadata, and offline feature store.
+- **Postgres**: MLflow backend store for runs/registry metadata and Feast registry metadata.
 
 ### How the pieces connect
-- DVC stores a content hash and remote location in `data/*.dvc`.
-- MLflow logs metrics and artifacts for each run, and records the code/data tags.
+- DVC stores content hashes and remote locations for the raw dataset and feature snapshot in `data/*.dvc`.
+- MLflow logs metrics and artifacts for each run, and records the code/data/snapshot lineage tags.
 - RustFS stores the actual data and artifacts, referenced by both DVC and MLflow.
-- Postgres stores MLflow metadata (runs, params, metrics, registry) and features.
+- Postgres stores MLflow metadata and the Feast registry. Feast reads local Parquet feature snapshots during training.
 
 ### Why this matters
 This setup ties **code + data + model** to a specific run. You can always:

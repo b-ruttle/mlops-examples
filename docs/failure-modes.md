@@ -40,7 +40,7 @@ make pull-host
 ```
 
 Why `pull-host`:
-- `make pull` rewrites the DVC endpoint inside the runner container to `http://mlflow-rustfs:9000`, so the committed `.dvc/config` endpoint is only exercised by the host fallback path.
+- `make pull` rewrites the DVC endpoint inside the runner container to `http://rustfs:9000`, so the committed `.dvc/config` endpoint is only exercised by the host fallback path.
 
 Fix it:
 Revert the config change and re-run:
@@ -48,17 +48,17 @@ Revert the config change and re-run:
 make pull-host
 ```
 
-## 4) Feast offline store unreachable
+## 4) Feast registry unreachable
 Break it:
 ```bash
 export POSTGRES_HOST="bad-host"
-make load-docker
+make split-docker
 ```
 
 Fix it:
 ```bash
 unset POSTGRES_HOST
-make load-docker
+make split-docker
 ```
 
 ### What to observe
