@@ -60,8 +60,18 @@ cp .env.user.example .env.user
 
 ## Step 1: Create a New Branch
 ```bash
-git checkout -b demo/repro-1
+git checkout -b demo/<your-name>/repro-1
 ```
+
+Use a unique branch name for your own walkthrough. The branch in this tutorial is meant to be a personal, disposable workspace for recording the demo commits, not a shared branch name that everyone pushes to.
+
+Examples:
+```bash
+git checkout -b demo/brent/repro-1
+git checkout -b demo/alice/repro-1
+```
+
+If you are only running the tutorial locally, the exact name does not matter. If you do push branches to a shared remote, keep the personal prefix so multiple people can run the same tutorial without colliding.
 
 ---
 
@@ -395,5 +405,5 @@ Airflow is the operational layer that turns that linear workflow into a managed 
 ## Step 11: Cleanup (Optional)
 ```bash
 git checkout main
-git branch -D demo/repro-1
+git branch -D demo/<your-name>/repro-1
 ```
