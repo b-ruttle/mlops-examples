@@ -132,6 +132,13 @@ make pull MLOPS_SERVICES_DIR=/path/to/mlops-services
 
 Use your own MLflow user account when training. Do not use the bootstrap admin account from `mlops-services`.
 
+This repo uses different auth patterns for different services:
+- MLflow: per-user accounts for experiment tracking and attribution
+- Airflow: a bootstrap admin account for the local orchestration UI
+- RustFS: service/admin credentials for the backing object store
+
+`.env.user` is only for your personal MLflow credentials. It is not used to log into the Airflow UI or the RustFS console.
+
 Create a local `.env.user` from the example file:
 
 ```bash
@@ -150,6 +157,9 @@ The docker-based Make targets automatically load:
 - `../mlops-services/env/config.env`
 - `../mlops-services/env/secrets.env`
 - `.env.user` if present
+
+If you open `http://localhost/airflow`, log in with `AIRFLOW_ADMIN_USERNAME` / `AIRFLOW_ADMIN_PASSWORD` from `../mlops-services/env/secrets.env`.
+If you open `http://localhost/rustfs`, log in with the RustFS console credentials from `../mlops-services/env/secrets.env`.
 
 Host-based `make snapshot`, `make split`, and `make train` do not source those files automatically. If you use the host fallback, export the needed values yourself, or set `MLFLOW_TRACKING_URI` and the Postgres connection variables explicitly in your shell first.
 

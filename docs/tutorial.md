@@ -45,6 +45,7 @@ make up
 
 Verify:
 - MLflow UI: 'http://localhost/mlflow'
+- Airflow UI: 'http://localhost/airflow'
 - RustFS Console: 'http://localhost/rustfs'
 
 Use the dockerized DVC workflow in this repo. DVC object operations use the internal RustFS service from the runner container.
@@ -55,6 +56,11 @@ Set up your personal MLflow credentials. Do not use the bootstrap admin account:
 cp .env.user.example .env.user
 # edit .env.user and set your own MLFLOW_TRACKING_USERNAME / MLFLOW_TRACKING_PASSWORD
 ```
+
+Keep the service logins separate:
+- `.env.user` is only for your personal MLflow account used by training and logging steps
+- Airflow UI login uses `AIRFLOW_ADMIN_USERNAME` / `AIRFLOW_ADMIN_PASSWORD` from `../mlops-services/env/secrets.env`
+- RustFS console login uses the RustFS credentials from `../mlops-services/env/secrets.env`
 
 ---
 
@@ -335,6 +341,8 @@ export MLOPS_EXAMPLES_DIR="$(cd ../mlops-examples && pwd)"
 cp .env.user.example .env.user
 # then edit .env.user
 ```
+
+`.env.user` is not your Airflow login. When you open the Airflow UI, sign in with `AIRFLOW_ADMIN_USERNAME` / `AIRFLOW_ADMIN_PASSWORD` from `../mlops-services/env/secrets.env`.
 
 ### Demo DAG
 Start with the `demo` DAG. It proves:
