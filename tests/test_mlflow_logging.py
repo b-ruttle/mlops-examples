@@ -46,6 +46,40 @@ class _FakeRun:
 
 
 class MlflowLoggingTests(unittest.TestCase):
+    def test_public_tracking_uri_uses_nginx_port_when_needed(self) -> None:
+        cfg = {"mlflow": {"tracking_uri": "http://${PUBLIC_FQDN}/${MLFLOW_BASE_PATH}"}}
+
+        with patch.dict(
+            os.environ,
+            {
+                "PUBLIC_FQDN": "localhost",
+                "MLFLOW_BASE_PATH": "/mlflow",
+                "NGINX_PORT": "7777",
+            },
+            clear=False,
+        ):
+            self.assertEqual(
+                tracking_mod._public_mlflow_tracking_uri(cfg),
+                "http://localhost:7777/mlflow",
+            )
+
+    def test_public_tracking_uri_keeps_explicit_port_in_public_fqdn(self) -> None:
+        cfg = {"mlflow": {"tracking_uri": "http://${PUBLIC_FQDN}/${MLFLOW_BASE_PATH}"}}
+
+        with patch.dict(
+            os.environ,
+            {
+                "PUBLIC_FQDN": "localhost:5999",
+                "MLFLOW_BASE_PATH": "mlflow",
+                "NGINX_PORT": "7777",
+            },
+            clear=False,
+        ):
+            self.assertEqual(
+                tracking_mod._public_mlflow_tracking_uri(cfg),
+                "http://localhost:5999/mlflow",
+            )
+
     def test_log_run_emits_expected_tags_and_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

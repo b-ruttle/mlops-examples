@@ -19,13 +19,13 @@ make pull
 ## 2) MLflow tracking URI unreachable
 Break it:
 ```bash
-export PUBLIC_FQDN="localhost:5999"
+export NGINX_PORT="5999"
 make log
 ```
 
 Fix it:
 ```bash
-unset PUBLIC_FQDN
+unset NGINX_PORT
 make log
 ```
 
@@ -34,16 +34,16 @@ Break it (temporarily):
 ```bash
 sed -n '1,120p' .dvc/config
 ```
-Edit the `endpointurl` to a bad value, then try the host fallback:
+Add an `endpointurl` with a bad value, then try the host fallback:
 ```bash
 make pull-host
 ```
 
 Why `pull-host`:
-- `make pull` rewrites the DVC endpoint inside the runner container to `http://rustfs:9000`, so the committed `.dvc/config` endpoint is only exercised by the host fallback path.
+- `make pull` rewrites the DVC endpoint inside the runner container to `http://rustfs:9000`, so host endpoint settings are only exercised by the host fallback path.
 
 Fix it:
-Revert the config change and re-run:
+Remove or correct the host endpoint override and re-run:
 ```bash
 make pull-host
 ```

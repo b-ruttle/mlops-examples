@@ -38,9 +38,9 @@ uv --version
 ```
 
 ## Local endpoints (mlops-services default)
-- MLflow UI: http://localhost/mlflow
-- Airflow UI: http://localhost/airflow
-- RustFS Console: http://localhost/rustfs
+- MLflow UI: http://localhost:7777/mlflow
+- Airflow UI: http://localhost:7777/airflow
+- RustFS Console: http://localhost:7777/rustfs
 
 ## Makefile commands
 
@@ -97,9 +97,9 @@ This repo includes a committed DVC remote pointing at RustFS.
 
 - bucket: `dvc-remote`
 - prefix: `mlops-examples`
-- committed host fallback endpoint: `http://localhost:9000`
+- no committed host fallback endpoint; the default service topology keeps the RustFS S3 API internal-only
 
-If you need to change these, update `.dvc/config`. The supported dockerized DVC workflow rewrites the endpoint inside the runner container to `http://rustfs:9000`, so the committed `localhost` value mainly matters for intentional host-based fallback use.
+If you need host-side DVC access, set a reachable S3-compatible `endpointurl` yourself in `.dvc/config.local` or by editing `.dvc/config` for your local machine. The supported dockerized DVC workflow rewrites the endpoint inside the runner container to `http://rustfs:9000`, so the repo no longer commits a host fallback endpoint that does not exist in the default `mlops-services` setup.
 
 Important:
 - The supported workflow is `make pull` / `make push`, which run DVC inside the runner container and talk to the internal RustFS service on the shared Docker network.
@@ -158,8 +158,8 @@ The docker-based Make targets automatically load:
 - `../mlops-services/env/secrets.env`
 - `.env.user` if present
 
-If you open `http://localhost/airflow`, log in with `AIRFLOW_ADMIN_USERNAME` / `AIRFLOW_ADMIN_PASSWORD` from `../mlops-services/env/secrets.env`.
-If you open `http://localhost/rustfs`, log in with the RustFS console credentials from `../mlops-services/env/secrets.env`.
+If you open `http://localhost:7777/airflow`, log in with `AIRFLOW_ADMIN_USERNAME` / `AIRFLOW_ADMIN_PASSWORD` from `../mlops-services/env/secrets.env`.
+If you open `http://localhost:7777/rustfs`, log in with the RustFS console credentials from `../mlops-services/env/secrets.env`.
 
 Host-based `make snapshot`, `make split`, and `make train` do not source those files automatically. If you use the host fallback, export the needed values yourself, or set `MLFLOW_TRACKING_URI` and the Postgres connection variables explicitly in your shell first.
 
@@ -242,7 +242,7 @@ make snapshot
 
 Host fallback note:
 - `make snapshot` only needs the local workspace and DVC tooling. The split step still expects the Postgres variables referenced by `configs/*.yaml` so Feast can sync the registry from the checked-out repo.
-- Feast may create local SQLite state under `feature_store/data/` when the repo is applied. That file is local runtime state for the default local provider and is not part of the tracked tutorial outputs.
+- Feast may create local SQLite state under `feature_store/data/` when the repo is applied. That file is ignored local runtime state, not part of the tracked tutorial outputs, and the split targets reset it before `feast apply` so stale runner-owned files do not break later runs.
 
 ### 4) Create train/test splits from Feast features
 
@@ -275,7 +275,7 @@ make train
 ```
 
 Host fallback note:
-- `make train` reads the local split CSVs and does not require Postgres. `make log` expects the MLflow connection values to already be exported in your shell, either through `MLFLOW_TRACKING_URI` or through `PUBLIC_FQDN` + `MLFLOW_BASE_PATH`, plus your `MLFLOW_TRACKING_USERNAME` / `MLFLOW_TRACKING_PASSWORD`.
+- `make train` reads the local split CSVs and does not require Postgres. `make log` prefers an explicit `MLFLOW_TRACKING_URI`; otherwise it derives the public MLflow URL from `PUBLIC_FQDN`, `NGINX_PORT`, and `MLFLOW_BASE_PATH`, plus your `MLFLOW_TRACKING_USERNAME` / `MLFLOW_TRACKING_PASSWORD`.
 
 ### 6) Evaluate and locally generate metrics/plots artifacts
 

@@ -44,9 +44,9 @@ make up
 ```
 
 Verify:
-- MLflow UI: 'http://localhost/mlflow'
-- Airflow UI: 'http://localhost/airflow'
-- RustFS Console: 'http://localhost/rustfs'
+- MLflow UI: 'http://localhost:7777/mlflow'
+- Airflow UI: 'http://localhost:7777/airflow'
+- RustFS Console: 'http://localhost:7777/rustfs'
 
 Use the dockerized DVC workflow in this repo. DVC object operations use the internal RustFS service from the runner container.
 
@@ -354,7 +354,7 @@ Start with the `demo` DAG. It proves:
 
 Run it from the Airflow UI:
 
-1. Open `http://localhost/airflow`
+1. Open `http://localhost:7777/airflow`
 2. Find the `demo` DAG
 3. Click the play button to trigger it
 
@@ -368,7 +368,7 @@ Once the demo DAG works, use `mlops_pipeline`.
 
 Run it from the UI:
 
-1. Open `http://localhost/airflow`
+1. Open `http://localhost:7777/airflow`
 2. Open the `mlops_pipeline` DAG
 3. Trigger a run
 4. Watch the `Grid` view as each task turns from queued to running to success or failed

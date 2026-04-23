@@ -4,6 +4,7 @@ import json
 import os
 import pickle
 from pathlib import Path
+from urllib.parse import urlparse
 
 import mlflow
 import mlflow.sklearn
@@ -11,6 +12,26 @@ import pandas as pd
 
 from mlops_examples.config import load_config
 from mlops_examples.utils import get_git_sha, read_dvc_hash, sha256_file
+
+
+def _public_mlflow_tracking_uri(cfg: dict[str, object]) -> str:
+    configured_uri = str(cfg["mlflow"]["tracking_uri"])
+    public_fqdn = os.environ.get("PUBLIC_FQDN")
+    base_path = os.environ.get("MLFLOW_BASE_PATH")
+
+    if not public_fqdn or not base_path:
+        return os.path.expandvars(configured_uri)
+
+    port = os.environ.get("NGINX_PORT", "80")
+    parsed_fqdn = urlparse(f"//{public_fqdn}")
+    host = parsed_fqdn.hostname or public_fqdn
+    resolved_port = parsed_fqdn.port
+    if resolved_port is None and port not in {"", "80"}:
+        resolved_port = int(port)
+
+    normalized_base_path = base_path if base_path.startswith("/") else f"/{base_path}"
+    netloc = host if resolved_port is None else f"{host}:{resolved_port}"
+    return f"http://{netloc}{normalized_base_path}"
 
 
 def log_run(config_path: str) -> None:
@@ -27,7 +48,7 @@ def log_run(config_path: str) -> None:
     test_path = split_dir / "test.csv"
     snapshot_dvc_path = snapshot_dir.with_suffix(".dvc")
 
-    tracking_uri = os.path.expandvars(os.environ.get("MLFLOW_TRACKING_URI", cfg["mlflow"]["tracking_uri"]))
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI") or _public_mlflow_tracking_uri(cfg)
     experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", cfg["mlflow"]["experiment_name"])
     registered_model_name = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", cfg["mlflow"]["registered_model_name"])
 
