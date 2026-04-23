@@ -31,6 +31,8 @@ help:
 
 MLOPS_SERVICES_DIR ?= ../mlops-services
 TRAIN_CONFIG ?= configs/dev.yaml
+REPO_ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+SELF_MAKE = $(MAKE) -C $(REPO_ROOT)
 HOST_UID ?= $(shell id -u 2>/dev/null || echo 1000)
 HOST_GID ?= $(shell id -g 2>/dev/null || echo 1000)
 RUNNER_INTERNAL_POSTGRES_HOST = postgres
@@ -163,7 +165,7 @@ define banner
 endef
 
 setup:
-	uv venv
+	if [ ! -d .venv ]; then uv venv; fi
 	uv sync
 
 lock:
@@ -176,6 +178,7 @@ test-docker:
 	$(call RUNNER_TEST_WITH_ENV)
 
 extract:
+	rm -f data/raw/breast_cancer.csv
 	PYTHONPATH=src uv run python -m mlops_examples.cli.extract --out data/raw/breast_cancer.csv
 	uv run dvc add data/raw/breast_cancer.csv
 
@@ -214,11 +217,12 @@ snapshot:
 load: snapshot
 
 split:
+	rm -rf feature_store/data
 	uv run feast -c feature_store apply
 	PYTHONPATH=src uv run python -m mlops_examples.cli.split --config $(TRAIN_CONFIG)
 
 split-docker:
-	$(call RUNNER_WITH_POSTGRES_ENV,run --rm runner $(RUNNER_FEAST) -c feature_store apply)
+	$(call RUNNER_WITH_POSTGRES_ENV,run --rm --user root runner /bin/bash -lc "rm -rf feature_store/data && mkdir -p feature_store/data && $(RUNNER_FEAST) -c feature_store apply")
 	$(call RUNNER_WITH_POSTGRES_ENV,run --rm runner $(RUNNER_PYTHON) -m mlops_examples.cli.split --config $(TRAIN_CONFIG))
 
 train:
@@ -241,24 +245,24 @@ log:
 
 pipeline:
 	$(call banner,STEP 1: CREATE ENV)
-	make setup
+	$(SELF_MAKE) setup
 	$(call banner,STEP 2: EXTRACT DATA)
-	make extract
+	$(SELF_MAKE) extract
 	$(call banner,STEP 3: PUSH DATA)
-	make push
+	$(SELF_MAKE) push
 	$(call banner,STEP 4: PULL DATA)
-	make pull
+	$(SELF_MAKE) pull
 	$(call banner,STEP 5: TRANSFORM DATA)
-	make transform
+	$(SELF_MAKE) transform
 	$(call banner,STEP 6: BUILD FEATURE SNAPSHOT)
-	make snapshot-docker
+	$(SELF_MAKE) snapshot-docker
 	$(call banner,STEP 7: PUSH SNAPSHOT)
-	make push
+	$(SELF_MAKE) push
 	$(call banner,STEP 8: SPLIT DATA)
-	make split-docker
+	$(SELF_MAKE) split-docker
 	$(call banner,STEP 9: TRAIN MODEL)
-	make train
+	$(SELF_MAKE) train
 	$(call banner,STEP 10: EVALUATE MODEL)
-	make eval
+	$(SELF_MAKE) eval
 	$(call banner,STEP 11: LOG RESULTS)
-	make log
+	$(SELF_MAKE) log
