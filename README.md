@@ -341,7 +341,13 @@ GitLab CI/CD variables required (masked/protected):
 
 ## Airflow
 
-Airflow DAGs live under `dags/`, but the step-by-step walkthrough now lives in `docs/tutorial.md` so the command-line and Airflow flows stay in one place.
+Airflow DAGs live under `dags/`, and this repository opts into the shared
+`mlops-services` Airflow instance through `.airflow-project.env`. The platform
+discovers the manifest anywhere below its configured `AIRFLOW_PROJECTS_DIR`;
+`mlops-services` does not require this repository in order to start.
+
+The step-by-step walkthrough lives in `docs/tutorial.md` so the command-line
+and Airflow flows stay in one place.
 
 Use the tutorial for:
 

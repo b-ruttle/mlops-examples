@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import shlex
 from datetime import datetime
+from pathlib import Path
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
@@ -9,13 +11,15 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from docker.types import Mount
 
 
-REPO_HOST_DIR = os.environ.get("MLOPS_EXAMPLES_HOST_DIR")
+REPO_HOST_DIR = os.environ.get("MLOPS_EXAMPLES_REPO_HOST_DIR")
 if not REPO_HOST_DIR:
     raise RuntimeError(
-        "Set MLOPS_EXAMPLES_HOST_DIR to the host path of your mlops-examples checkout."
+        "MLOPS_EXAMPLES_REPO_HOST_DIR must be injected by mlops-services project "
+        "discovery from the host repo containing .airflow-project.env."
     )
+REPO_AIRFLOW_DIR = Path(__file__).resolve().parents[1]
 REPO_CONTAINER_DIR = "/work"
-RUNNER_IMAGE = "mlops-examples-runner"
+RUNNER_IMAGE = os.environ.get("MLOPS_EXAMPLES_RUNNER_IMAGE", "mlops-examples-runner")
 NETWORK_NAME = os.environ.get("MLOPS_NETWORK", "mlops")
 
 COMMON_ENV = {
@@ -46,6 +50,10 @@ COMMON_MOUNTS = [
     Mount(source=REPO_HOST_DIR, target=REPO_CONTAINER_DIR, type="bind"),
 ]
 
+RUNNER_IMAGE_SHELL = shlex.quote(RUNNER_IMAGE)
+REPO_AIRFLOW_DIR_SHELL = shlex.quote(str(REPO_AIRFLOW_DIR))
+RUNNER_DOCKERFILE_SHELL = shlex.quote(str(REPO_AIRFLOW_DIR / "Dockerfile.runner"))
+
 
 def runner_task(task_id: str, command: str, *, skip_on_exit_code: int | None = None) -> DockerOperator:
     return DockerOperator(
@@ -75,14 +83,14 @@ with DAG(
         task_id="setup_environment",
         bash_command=(
             "if docker image inspect "
-            f"{RUNNER_IMAGE} "
+            f"{RUNNER_IMAGE_SHELL} "
             "> /dev/null 2>&1; then "
-            f"echo '{RUNNER_IMAGE} already exists; skipping rebuild.'; "
+            f"echo {shlex.quote(f'{RUNNER_IMAGE} already exists; skipping rebuild.')}; "
             "else "
             "docker build "
-            f"-t {RUNNER_IMAGE} "
-            "-f /opt/mlops-examples/Dockerfile.runner "
-            "/opt/mlops-examples; "
+            f"-t {RUNNER_IMAGE_SHELL} "
+            f"-f {RUNNER_DOCKERFILE_SHELL} "
+            f"{REPO_AIRFLOW_DIR_SHELL}; "
             "fi"
         ),
     )

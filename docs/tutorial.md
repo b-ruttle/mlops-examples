@@ -286,10 +286,12 @@ Once the command-line flow works, switch to Airflow to run the same pipeline as 
 
 This repo includes Airflow DAGs under `dags/`:
 
-- `dags/demo.py`: a small smoke-test DAG with two tasks, `hello -> airflow`
 - `dags/mlops_pipeline.py`: the full example pipeline orchestrated in Airflow
 
-Airflow itself runs from `../mlops-services`, but the DAG code lives in this repo so it can evolve alongside the pipeline code and configs.
+Airflow itself runs from `../mlops-services`, but the pipeline DAG and its
+`.airflow-project.env` registration live in this repo so they can evolve
+alongside the pipeline code and configs. The platform owns a separate
+`mlops_services_smoke` DAG for checking the Airflow installation.
 
 ### What Airflow is doing here
 Airflow is the orchestrator. It does not replace DVC, Feast, or MLflow.
@@ -325,16 +327,13 @@ Before using the DAGs:
 1. Start `mlops-services` in another terminal:
 ```bash
 cd ../mlops-services
-export MLOPS_EXAMPLES_DIR=/path/to/your/mlops-examples-checkout
+make airflow-projects-validate
 make up
 ```
 
-If your repo layout is the default sibling checkout, use:
-```bash
-export MLOPS_EXAMPLES_DIR="$(cd ../mlops-examples && pwd)"
-```
-
-2. Make sure Airflow is mounting this repo's `dags/` folder from `MLOPS_EXAMPLES_DIR`.
+2. Confirm `make airflow-projects-list` includes `mlops-examples`. This repository
+   is discovered through its committed `.airflow-project.env`; no
+   `MLOPS_EXAMPLES_DIR` setting or project-specific Compose mount is needed.
 
 3. Make sure your personal MLflow credentials are available in `.env.user`:
 ```bash
@@ -344,8 +343,8 @@ cp .env.user.example .env.user
 
 `.env.user` is not your Airflow login. When you open the Airflow UI, sign in with `AIRFLOW_ADMIN_USERNAME` / `AIRFLOW_ADMIN_PASSWORD` from `../mlops-services/env/secrets.env`.
 
-### Demo DAG
-Start with the `demo` DAG. It proves:
+### Platform smoke DAG
+Start with the `mlops_services_smoke` DAG. It proves:
 
 - Airflow can discover DAG files
 - the scheduler can create a DAG run
@@ -355,7 +354,7 @@ Start with the `demo` DAG. It proves:
 Run it from the Airflow UI:
 
 1. Open `http://localhost:7777/airflow`
-2. Find the `demo` DAG
+2. Find the `mlops_services_smoke` DAG
 3. Click the play button to trigger it
 
 Expected behavior:
@@ -364,7 +363,7 @@ Expected behavior:
 - task `airflow` prints `airflow`
 
 ### MLOps pipeline DAG
-Once the demo DAG works, use `mlops_pipeline`.
+Once the platform smoke DAG works, use `mlops_pipeline`.
 
 Run it from the UI:
 
@@ -411,7 +410,7 @@ The Makefile is still the simplest mental model for the pipeline.
 Airflow is the operational layer that turns that linear workflow into a managed DAG.
 
 ### Good beginner workflow
-1. Confirm `demo` works
+1. Confirm `mlops_services_smoke` works
 2. Trigger `mlops_pipeline`
 3. Watch the `Grid` view
 4. If a task fails, open its log and identify the first real exception
